@@ -1,4 +1,4 @@
-function out_imgs = equi2monos_intrinsic(img_pano, imw, imh, K)
+function out_imgs = equi2monos_intrinsic(img_pano, imw, imh, K, ang)
 % Convert a panoramic image to 8 monocular images based on given resulotion
 % and FoVs.
 % Input: 
@@ -6,6 +6,8 @@ function out_imgs = equi2monos_intrinsic(img_pano, imw, imh, K)
 %   imw: the width of output monocular image
 %   imh: the height of output monocular image
 %   K: camera intrinsic simulated by the output monocular image
+%   ang: the angle in degree indicts how much you look down 
+
 % Output:
 %   out_imgs: 8x1 cells contain output images
 %%
@@ -34,14 +36,19 @@ img_pano_padding(:,end,:) = img_pano(:,1,:);
 % figure; pcshow(pts(1:50:end,:), clrs(1:50:end,:));
 
 %% CounterClockWise
-views = [0 0 0; % Front
+views = [-45 0 0;
+         0 0 0; % Front
          45 0 0;
          90 0 0; % Right
          135 0 0;
          180 0 0; % Back
          -135 0 0;
-         -90 0 0; % Left
-         -45 0 0];
+         -90 0 0 % Left
+         ];
+
+views(1:4,2) = ang;
+views(5:8,2) = -ang;
+
 num_views = size(views,1);
 
 Rs = zeros(3,3,num_views);
@@ -68,6 +75,11 @@ ptx = (u-K(1,3))/K(1,1);
 pty = (v-K(2,3))/K(2,2);
 ptz = ones(imh,imw);
 
+r = sqrt(ptx.^2 + pty.^2 + ptz.^2);
+ptx = ptx ./ r;
+pty = pty ./ r;
+ptz = ptz ./ r;
+
 % figure; pcshow([ptx(:),pty(:),ptz(:)]);
 out_imgs = cell(num_views, 1);
 for i = 1:num_views    
@@ -86,11 +98,15 @@ for i = 1:num_views
     thetas = asin(p3dy);
     ycoo = (thetas / pi + 0.5)*height;
     
-    xznorm = sqrt(p3dx.^2 + p3dz.^2);
-    phis = acos(p3dz ./ xznorm);
-    phis(p3dx<0) = - phis(p3dx<0);
-    xcoo = (phis / pi / 2 + 0.5)*width;
+%     xznorm = sqrt(p3dx.^2 + p3dz.^2);
+%     phis = acos(p3dz ./ xznorm);
+%     phis(p3dx<0) = - phis(p3dx<0);
+    sinphis = p3dx ./ cos(thetas);
+    cosphis = p3dz ./ cos(thetas);
+    phis = atan2(sinphis,cosphis);
     
+    xcoo = (phis / pi / 2 + 0.5)*width;
+        
 %     xcoo(xcoo>width) = width;
 %     xcoo(xcoo<0) = 0;
 %     ycoo(ycoo>height) = height;
@@ -98,7 +114,7 @@ for i = 1:num_views
     
     im = zeros(imh, imw, 3);
     for c = 1:3
-        im(:,:,c) = interp2(double(img_pano_padding(:,:,c)), xcoo+1, ycoo);
+        im(:,:,c) = interp2(double(img_pano_padding(:,:,c)), xcoo+1, ycoo, 'bicubic');
     end
     
     out_imgs{i} = im / 255;
